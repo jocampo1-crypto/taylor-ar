@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Taylor AR</title>
+<script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+<script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#07111f;color:#f8fafc;font-family:Arial,sans-serif}
+#panel{position:fixed;z-index:5;top:10px;left:10px;right:10px;max-width:560px;margin:auto;padding:13px 15px;background:#07111feF;border:1px solid #334155;border-radius:15px}
+h1{font-size:18px;color:#7dd3fc;margin:0 0 5px}.small{font-size:11px;color:#cbd5e1}
+#day{font-size:22px;color:#facc15;font-weight:bold;float:right}input{width:100%;accent-color:#38bdf8}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-top:8px}.cell{background:#172a42;padding:8px;border-radius:9px}.cell small{display:block;color:#cbd5e1;font-size:10px}.cell b{font-size:15px}
+#msg{font-size:11px;color:#cbd5e1;margin-top:8px;line-height:1.35}
+#hint{position:fixed;z-index:5;bottom:10px;left:10px;right:10px;text-align:center;background:#07111feF;padding:10px;border:1px solid #334155;border-radius:10px;font-size:12px}
+a-scene{position:fixed;inset:0}
+</style></head><body>
+<div id="panel">
+<h1>📈 TAYLOR AR · Crecimiento de usuarios</h1>
+<div class="small">Modelo académico sintético · 1.000 usuarios iniciales · tasa continua supuesta del 3 % diario</div>
+<div style="margin-top:10px"><label for="slider">Día desde el lanzamiento</label><span id="day">0</span></div>
+<input id="slider" type="range" min="0" max="30" value="0">
+<div class="grid">
+<div class="cell"><small>Función exponencial</small><b style="color:#7dd3fc" id="fval">1.000</b></div>
+<div class="cell"><small>Taylor grado 3</small><b style="color:#fdba74" id="pval">1.000</b></div>
+<div class="cell"><small>Error relativo</small><b id="err">0,000 %</b></div>
+<div class="cell"><small>Criterio máximo 1 %</small><b id="state" style="color:#86efac">Cumple</b></div>
+</div><div id="msg">Permite la cámara y apunta al marcador HIRO impreso.</div>
+</div>
+<div id="hint">Apunta la cámara al marcador HIRO. Cambia el día con el control superior.</div>
+<a-scene embedded vr-mode-ui="enabled:false" renderer="logarithmicDepthBuffer:true;precision:medium"
+ arjs="sourceType:webcam;detectionMode:mono;debugUIEnabled:false">
+<a-marker preset="hiro" id="marker" smooth="true" smooth-count="5">
+<a-entity id="content">
+<a-plane position="0 0 0" rotation="-90 0 0" width="2.8" height="1.65" material="color:#0b1d33;opacity:.9;transparent:true;side:double"></a-plane>
+<a-entity id="axes"></a-entity><a-entity id="lineF"></a-entity><a-entity id="lineP"></a-entity>
+<a-text value="CRECIMIENTO DE USUARIOS" position="-1.25 .04 -.69" rotation="-90 0 0" width="3.4" color="#ffffff" align="center"></a-text>
+<a-text value="AZUL: EXPONENCIAL" position="-1.18 .04 -.53" rotation="-90 0 0" width="2.1" color="#38bdf8"></a-text>
+<a-text value="NARANJA: TAYLOR GRADO 3" position="-1.18 .04 -.40" rotation="-90 0 0" width="2.4" color="#fdba74"></a-text>
+<a-text id="day3d" value="DÍA 0" position=".48 .05 .58" rotation="-90 0 0" width="1.5" color="#facc15"></a-text>
+<a-box id="barF" position=".52 .1 .08" width=".18" height=".2" depth=".18" color="#38bdf8"></a-box>
+<a-box id="barP" position=".80 .1 .08" width=".18" height=".2" depth=".18" color="#fb923c"></a-box>
+<a-text value="EXP" position=".43 .04 .22" rotation="-90 0 0" width=".6" color="#38bdf8"></a-text>
+<a-text value="TAY" position=".72 .04 .22" rotation="-90 0 0" width=".6" color="#fdba74"></a-text>
+</a-entity></a-marker><a-entity camera></a-entity></a-scene>
+<script>
+const $=id=>document.getElementById(id), fmt=n=>Math.round(n).toLocaleString('es-CO');
+const f=x=>1000*Math.exp(.03*x), p=x=>1000+30*x+.45*x*x+.0045*x*x*x;
+const y=v=>.12+(v-1000)/1500*.82;
+function draw(){
+ const sc=document.querySelector('a-scene'); if(!sc.hasLoaded)return;
+ const THREE=AFRAME.THREE;
+ function addLine(target,pts,color){
+  const geom=new THREE.BufferGeometry().setFromPoints(pts.map(q=>new THREE.Vector3(q[0],q[1],q[2])));
+  target.object3D.add(new THREE.Line(geom,new THREE.LineBasicMaterial({color,linewidth:3})));
+ }
+ const ax=$('axes'); if(ax.dataset.done)return; ax.dataset.done='1';
+ addLine(ax,[[-1.15,.035,.42],[1.15,.035,.42]],'#e2e8f0');
+ addLine(ax,[[-1.15,.035,.42],[-1.15,.035,-.32]],'#e2e8f0');
+ const a=[],b=[];for(let d=0;d<=30;d++){let z=.42-d/30*.72,x=-1.15+d/30*2.3;a.push([x,y(f(d)),z]);b.push([x,y(p(d)),z]);}
+ addLine($('lineF'),a,'#38bdf8');addLine($('lineP'),b,'#fb923c');
+ [0,10,20,30].forEach(d=>{let t=document.createElement('a-text');t.setAttribute('value',d);t.setAttribute('position',`${-1.15+d/30*2.3} .045 .48`);t.setAttribute('rotation','-90 0 0');t.setAttribute('width','.35');t.setAttribute('color','#fff');$('content').appendChild(t);});
+}
+function update(){
+ let d=+$('slider').value,F=f(d),P=p(d),e=Math.abs(F-P)/F*100;
+ $('day').textContent=d;$('fval').textContent=fmt(F);$('pval').textContent=fmt(P);$('err').textContent=e.toFixed(3).replace('.',',')+' %';
+ $('state').textContent=e<=1?'Cumple':'Supera 1 %';$('state').style.color=e<=1?'#86efac':'#fca5a5';
+ $('day3d').setAttribute('value','DÍA '+d);
+ let h1=Math.max(.08,(F-1000)/1500*.82+.08),h2=Math.max(.08,(P-1000)/1500*.82+.08);
+ $('barF').setAttribute('height',h1);$('barF').setAttribute('position',`.52 ${h1/2} .08`);
+ $('barP').setAttribute('height',h2);$('barP').setAttribute('position',`.80 ${h2/2} .08`);
+ $('msg').textContent=d===27?'Día 27: error inferior al 1 %.':d===28?'Día 28: el error supera el 1 %.':d===23?'Día 23: dentro de la cota conservadora de Taylor.':'Los parámetros son supuestos académicos, no datos reales de una empresa.';
+}
+$('slider').addEventListener('input',update);
+document.querySelector('a-scene').addEventListener('loaded',()=>{draw();update()});
+$('marker').addEventListener('markerFound',()=>$('hint').textContent='¡Marcador detectado! La gráfica está anclada sobre la hoja.');
+$('marker').addEventListener('markerLost',()=>$('hint').textContent='Vuelve a apuntar al marcador HIRO.');
+update();
+</script></body></html>

@@ -1,0 +1,28 @@
+TAYLOR AR - EXPERIENCIA WEB DE REALIDAD AUMENTADA
+
+ARCHIVOS
+- index.html: aplicación de realidad aumentada.
+- LEEME.txt: estas instrucciones.
+
+MARCADOR
+Descarga e imprime el marcador HIRO oficial de AR.js:
+https://raw.githubusercontent.com/AR-js-org/AR.js/master/data/images/hiro.png
+Imprímelo en blanco y negro, sin deformarlo y conservando el borde completo.
+
+CÓMO PROBAR
+1. Sube index.html a un hosting HTTPS, por ejemplo GitHub Pages o Netlify.
+2. Abre la dirección HTTPS desde Chrome en tu celular.
+3. Acepta el permiso para usar la cámara.
+4. Apunta al marcador HIRO impreso.
+5. Usa el control superior para cambiar el día entre 0 y 30.
+6. Observa las curvas, las barras, los usuarios y el error.
+
+IMPORTANTE
+No abras el archivo directamente como file:// desde el celular: los navegadores normalmente bloquean la cámara en ese modo. Se necesita HTTPS y conexión a internet para cargar A-Frame y AR.js.
+
+MODELO
+f(x)=1000e^(0,03x)
+P3(x)=1000+30x+0,45x²+0,0045x³
+Error relativo=|f(x)-P3(x)|/|f(x)|*100
+
+Los 1.000 usuarios iniciales y la tasa continua del 3 % diario son supuestos sintéticos del proyecto.
