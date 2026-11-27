@@ -30,7 +30,7 @@ button.primary{background:#0369a1;border-color:#38bdf8}
 .control{min-width:0}
 input[type=range]{width:100%;accent-color:var(--cyan);margin:8px 0}
 .value{color:#facc15;font-weight:800;float:right}
-.chart-wrap{position:relative;height:330px;width:100%}
+.chart-wrap{position:relative;height:330px;width:100%}.chart-wrap canvas{display:block;width:100%!important;height:100%!important}
 .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}
 .stat{background:var(--panel2);border-radius:12px;padding:10px;min-width:0}
 .stat small{display:block;color:var(--muted);font-size:10px}
@@ -43,7 +43,7 @@ input[type=range]{width:100%;accent-color:var(--cyan);margin:8px 0}
 #directArea{display:block}
 .pill{display:inline-block;border:1px solid #31516f;border-radius:99px;padding:4px 9px;color:#bae6fd;font-size:11px}
 .footer{text-align:center;color:#8198b2;font-size:11px;padding:15px}
-@media(max-width:620px){main{padding:10px 9px 24px}.panel{padding:12px;border-radius:14px}.controls{grid-template-columns:1fr}.chart-wrap{height:280px}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.subtitle{font-size:12px}}
+@media(max-width:620px){main{padding:10px 9px 24px}.panel{padding:12px;border-radius:14px}.controls{grid-template-columns:1fr}.chart-wrap{height:280px}.chart-wrap canvas{display:block;width:100%!important;height:100%!important}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.subtitle{font-size:12px}}
 </style>
 </head>
 <body>
@@ -169,7 +169,9 @@ function buildData(){
 }
 function drawFallbackChart(){
  const canvas=$('functionChart'),ctx=canvas.getContext('2d');
- const w=canvas.clientWidth||600,h=canvas.clientHeight||280,dpr=window.devicePixelRatio||1;
+ const parent=canvas.parentElement;
+ const w=parent.clientWidth||600,h=parent.clientHeight||280,dpr=window.devicePixelRatio||1;
+ canvas.style.width='100%';canvas.style.height='100%';canvas.style.display='block';
  canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);
  ctx.clearRect(0,0,w,h);
  const datasets=buildData().filter(ds=>ds.data&&ds.data.length);
@@ -191,10 +193,16 @@ function drawFallbackChart(){
  datasets.forEach((ds,j)=>{ctx.fillStyle=palette[j%palette.length];ctx.fillRect(legendX,2,10,3);ctx.fillStyle='#e2e8f0';ctx.fillText(ds.label,legendX+14,9);legendX+=Math.min(150,ctx.measureText(ds.label).width+28)});
 }
 function renderChart(){
- const ctx=$('functionChart').getContext('2d');
- if(chart){chart.destroy();chart=null}
- if(typeof Chart==='undefined'){drawFallbackChart();return}
- chart=new Chart(ctx,{type:'line',data:{datasets:buildData()},options:{responsive:true,maintainAspectRatio:false,animation:{duration:250},interaction:{mode:'nearest',intersect:false},plugins:{legend:{labels:{color:'#e2e8f0',usePointStyle:true,boxWidth:9}},tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${fmt(c.parsed.y)}`}}},scales:{x:{type:'linear',title:{display:true,text:'x',color:'#b7c7d9'},ticks:{color:'#b7c7d9'},grid:{color:'#294361'}},y:{title:{display:true,text:'f(x)',color:'#b7c7d9'},ticks:{color:'#b7c7d9'},grid:{color:'#294361'}}}}});
+ const canvas=$('functionChart');
+ if(chart){try{chart.destroy()}catch(e){} chart=null}
+ try{
+  if(typeof Chart==='undefined')throw new Error('Chart.js no está disponible');
+  chart=new Chart(canvas.getContext('2d'),{type:'line',data:{datasets:buildData()},options:{responsive:true,maintainAspectRatio:false,animation:{duration:250},interaction:{mode:'nearest',intersect:false},plugins:{legend:{labels:{color:'#e2e8f0',usePointStyle:true,boxWidth:9}},tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${fmt(c.parsed.y)}`}}},scales:{x:{type:'linear',title:{display:true,text:'x',color:'#b7c7d9'},ticks:{color:'#b7c7d9'},grid:{color:'#294361'}},y:{title:{display:true,text:'f(x)',color:'#b7c7d9'},ticks:{color:'#b7c7d9'},grid:{color:'#294361'}}}}});
+ }catch(err){
+  console.warn('Se activa el dibujado local de Taylor AR:',err);
+  chart=null;
+  drawFallbackChart();
+ }
 }
 function updateStats(){
  const type=$('functionSelect').value,k=+$('rate').value,pos=+$('position').value,x=xAtPosition(pos),f=evaluate(type,x,k);
@@ -215,6 +223,7 @@ function chooseFunction(){
  $('functionDescription').textContent=d.desc;$('learningText').textContent=d.learn;
  $('position').value=type==='exp'?15:15;
  renderChart();updateStats();
+requestAnimationFrame(()=>{if(!chart)drawFallbackChart()});
 window.addEventListener('resize',()=>{if(!chart)drawFallbackChart()});
 if(typeof Chart==='undefined'){console.warn('Chart.js no cargó; se utiliza el trazado local de respaldo.')}
 }
@@ -297,4 +306,32 @@ function drawARGraph(){
  while(root.firstChild)root.removeChild(root.firstChild);
  root.object3D.children.slice().forEach(obj=>{if(obj.userData&&obj.userData.taylorAR){root.object3D.remove(obj);if(obj.geometry)obj.geometry.dispose();if(obj.material)obj.material.dispose()}});
  const type=$('functionSelect').value,k=+$('rate').value,range=definitions[type].range;
- const values=[];for(let i=0;i<=40;i++){let x=range[0]+(range[1]-range[0])*i/40;le
+ const values=[];for(let i=0;i<=40;i++){let x=range[0]+(range[1]-range[0])*i/40;let y=evaluate(type,x,k);if(y!==null&&Number.isFinite(y))values.push({x,y})}
+ let ymin=Math.min(...values.map(p=>p.y)),ymax=Math.max(...values.map(p=>p.y));if(ymax===ymin)ymax=ymin+1;
+ const scaleY=v=>.12+(v-ymin)/(ymax-ymin)*.72;
+ function line(points,color){const el=document.createElement('a-entity');el.setAttribute('line',{start:points[0],end:points[points.length-1],color});root.appendChild(el);
+  const geom=new AFRAME.THREE.BufferGeometry().setFromPoints(points.map(p=>new AFRAME.THREE.Vector3(...p)));
+  const mesh=new AFRAME.THREE.Line(geom,new AFRAME.THREE.LineBasicMaterial({color}));mesh.userData.taylorAR=true;root.object3D.add(mesh);}
+ const coords=values.map((p,i)=>[-1.05+i/40*2.1,scaleY(p.y),.18-(i/40)*.72]);
+ line([[-1.12,.04,.2],[1.12,.04,.2]],'#e2e8f0');line([[-1.12,.04,.2],[-1.12,.04,-.58]],'#e2e8f0');line(coords,'#38bdf8');
+ if(type==='exp'){const t=values.map((p,i)=>[-1.05+i/40*2.1,scaleY(taylorExp(p.x,k)),.18-(i/40)*.72]);line(t,'#fb923c')}
+ const title=document.createElement('a-text');title.setAttribute('value',definitions[type].name.toUpperCase());title.setAttribute('position','-.65 .06 -.68');title.setAttribute('rotation','-90 0 0');title.setAttribute('width','2.2');title.setAttribute('color','#ffffff');root.appendChild(title);
+ const marker=document.createElement('a-sphere');const pos=+$('position').value,x=xAtPosition(pos),v=evaluate(type,x,k),idx=Math.max(0,Math.min(40,Math.round((x-range[0])/(range[1]-range[0])*40)));
+ marker.setAttribute('radius','.045');marker.setAttribute('color','#4ade80');marker.setAttribute('position',coords[idx].join(' '));root.appendChild(marker);
+}
+$('directBtn').addEventListener('click',()=>setMode('direct'));
+$('arBtn').addEventListener('click',()=>setMode('ar'));
+$('startCamera').addEventListener('click',startAR);$('stopCamera').addEventListener('click',stopAR);
+$('functionSelect').addEventListener('change',chooseFunction);
+$('rate').addEventListener('input',()=>{$('rateValue').textContent=$('rate').value+' %';updateStats()});
+$('position').addEventListener('input',updateStats);
+$('resetBtn').addEventListener('click',()=>{$('position').value=15;$('rate').value=3;$('rateValue').textContent='3 %';updateStats()});
+$('playBtn').addEventListener('click',()=>{if(animation){clearInterval(animation);animation=null;$('playBtn').textContent='▶ Animar recorrido';return}
+ $('playBtn').textContent='Ⅱ Pausar';let p=+$('position').value;animation=setInterval(()=>{p++;if(p>30)p=0;$('position').value=p;updateStats()},180)});
+renderChart();updateStats();
+requestAnimationFrame(()=>{if(!chart)drawFallbackChart()});
+window.addEventListener('resize',()=>{if(!chart)drawFallbackChart()});
+if(typeof Chart==='undefined'){console.warn('Chart.js no cargó; se utiliza el trazado local de respaldo.')}
+</script>
+</body>
+</html>
