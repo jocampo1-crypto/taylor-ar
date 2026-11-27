@@ -6,6 +6,9 @@
 <meta name="theme-color" content="#071426">
 <title>Taylor AR | Explorador interactivo</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<!-- Se precargan las bibliotecas de realidad aumentada antes de que el usuario pulse el botón -->
+<script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.7/aframe/build/aframe-ar.js"></script>
 <style>
 :root{--bg:#071426;--panel:#10233d;--panel2:#172e4c;--line:#294361;--cyan:#38bdf8;--orange:#fb923c;--green:#4ade80;--text:#f8fafc;--muted:#b7c7d9}
 *{box-sizing:border-box}
@@ -95,7 +98,7 @@ input[type=range]{width:100%;accent-color:var(--cyan);margin:8px 0}
 <button id="startCamera" class="primary" type="button">Iniciar cámara</button>
 <button id="stopCamera" type="button">Detener cámara</button>
 </div>
-<p class="note">En este modo la cámara reconoce el marcador Hiro y coloca la curva sobre él. Permite el acceso a la cámara cuando el navegador lo solicite.</p>
+<p class="note">En este modo la cámara reconoce el marcador Hiro y coloca la curva sobre él. La página debe abrirse mediante HTTPS y debes permitir el acceso a la cámara.</p>
 </section>
 
 <section class="panel">
@@ -199,27 +202,56 @@ function setMode(mode){
 function loadScript(src){return new Promise((resolve,reject)=>{let s=document.createElement('script');s.src=src;s.onload=resolve;s.onerror=reject;document.head.appendChild(s)})}
 async function startAR(){
  if(arStarted)return;
- $('arHint').textContent='Cargando realidad aumentada…';
+ const hint=$('arHint');
+ $('startCamera').disabled=true;
+ hint.textContent='Preparando la cámara…';
  try{
-  if(!window.AFRAME)await loadScript('https://aframe.io/releases/1.6.0/aframe.min.js');
-  if(!window.AFRAME.components.arjs)await loadScript('https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js');
+  if(!window.isSecureContext){
+   throw new Error('Abre Taylor AR desde su dirección https://jocampo1-crypto.github.io/taylor-ar/. La cámara requiere una conexión segura.');
+  }
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+   throw new Error('Este navegador no permite acceder a la cámara. Abre el proyecto en Chrome actualizado.');
+  }
+  if(!window.AFRAME || !window.AFRAME.components || !window.AFRAME.components.arjs){
+   throw new Error('No se pudieron cargar las bibliotecas de realidad aumentada. Comprueba tu conexión a Internet y recarga la página.');
+  }
+  hint.textContent='Iniciando cámara. Si el navegador pregunta, pulsa Permitir…';
   $('arMount').innerHTML=`<a-scene embedded vr-mode-ui="enabled:false" renderer="logarithmicDepthBuffer:true;precision:medium" arjs="sourceType:webcam;detectionMode:mono;debugUIEnabled:false">
    <a-marker preset="hiro" id="hiroMarker" smooth="true" smooth-count="5">
     <a-entity id="arGraph" scale=".42 .42 .42"></a-entity>
    </a-marker><a-entity camera></a-entity></a-scene>`;
   const scene=$('arMount').querySelector('a-scene');
-  scene.addEventListener('loaded',()=>{sceneReady=true;drawARGraph();$('arHint').textContent='Apunta la cámara al marcador Hiro.'});
+  let loaded=false;
+  scene.addEventListener('loaded',()=>{loaded=true;sceneReady=true;drawARGraph();hint.textContent='Cámara iniciada. Apunta al marcador Hiro.'});
   const marker=$('arMount').querySelector('#hiroMarker');
-  marker.addEventListener('markerFound',()=>$('arHint').textContent='¡Hiro detectado! La gráfica está sobre el marcador.');
-  marker.addEventListener('markerLost',()=>$('arHint').textContent='No se detecta Hiro. Vuelve a enfocar el marcador.');
-  arStarted=true;$('startCamera').disabled=true;
- }catch(e){$('arHint').textContent='No se pudo iniciar AR. Comprueba tu conexión y permite el uso de la cámara.';console.error(e)}
+  marker.addEventListener('markerFound',()=>hint.textContent='¡Hiro detectado! La gráfica está sobre el marcador.');
+  marker.addEventListener('markerLost',()=>hint.textContent='No se detecta Hiro. Vuelve a enfocar el marcador.');
+  arStarted=true;
+  // Si el navegador rechaza el acceso, informar claramente al usuario.
+  setTimeout(()=>{
+   if(arStarted && !loaded && hint.textContent.includes('Iniciando cámara')){
+    hint.textContent='La cámara está tardando en iniciar. Comprueba que Chrome tenga permiso para usar la cámara y vuelve a intentarlo.';
+   }
+  },9000);
+ }catch(e){
+  console.error('Taylor AR:',e);
+  hint.textContent=e.message || 'No se pudo iniciar la cámara. Revisa los permisos del navegador.';
+  $('arMount').innerHTML='';
+  arStarted=false;
+  $('startCamera').disabled=false;
+ }
 }
 function stopAR(){
- if(!arStarted)return;
- const scene=$('arMount').querySelector('a-scene');
- if(scene){const systems=scene.systems||{};try{Object.values(systems).forEach(s=>{if(s.arSource&&s.arSource.domElement&&s.arSource.domElement.srcObject)s.arSource.domElement.srcObject.getTracks().forEach(t=>t.stop())})}catch(e){}}
- $('arMount').innerHTML='';arStarted=false;sceneReady=false;$('startCamera').disabled=false;$('arHint').textContent='Cámara detenida. Pulsa Iniciar cámara para volver a comenzar.';
+ const videos=[...document.querySelectorAll('video')];
+ videos.forEach(v=>{
+  if(v.srcObject && v.srcObject.getTracks) v.srcObject.getTracks().forEach(track=>track.stop());
+  v.pause();
+  if(v.parentNode && v.parentNode.id!=='arMount') v.remove();
+ });
+ $('arMount').innerHTML='';
+ arStarted=false;sceneReady=false;
+ $('startCamera').disabled=false;
+ $('arHint').textContent='Cámara detenida. Pulsa Iniciar cámara para volver a comenzar.';
 }
 function drawARGraph(){
  const root=$('arMount').querySelector('#arGraph');if(!root||!window.AFRAME||!root.object3D)return;
