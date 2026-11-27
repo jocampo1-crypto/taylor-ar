@@ -8,7 +8,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <!-- Se precargan las bibliotecas de realidad aumentada antes de que el usuario pulse el botón -->
 <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
-<script src="https://raw.githack.com/AR-js-org/AR.js/3.4.7/aframe/build/aframe-ar.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.7/aframe/build/aframe-ar.js"></script>
 <style>
 :root{--bg:#071426;--panel:#10233d;--panel2:#172e4c;--line:#294361;--cyan:#38bdf8;--orange:#fb923c;--green:#4ade80;--text:#f8fafc;--muted:#b7c7d9}
 *{box-sizing:border-box}
@@ -167,9 +167,33 @@ function buildData(){
  datasets.push({label:'Punto seleccionado',data:y===null?[]:[{x,y}],borderColor:colors.green,backgroundColor:colors.green,pointRadius:6,showLine:false});
  return datasets;
 }
+function drawFallbackChart(){
+ const canvas=$('functionChart'),ctx=canvas.getContext('2d');
+ const w=canvas.clientWidth||600,h=canvas.clientHeight||280,dpr=window.devicePixelRatio||1;
+ canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);
+ ctx.clearRect(0,0,w,h);
+ const datasets=buildData().filter(ds=>ds.data&&ds.data.length);
+ const all=datasets.flatMap(ds=>ds.data).filter(p=>Number.isFinite(p.y));
+ if(!all.length)return;
+ let xmin=Math.min(...all.map(p=>p.x)),xmax=Math.max(...all.map(p=>p.x));
+ let ymin=Math.min(...all.map(p=>p.y)),ymax=Math.max(...all.map(p=>p.y));
+ if(ymin===ymax){ymin-=1;ymax+=1}
+ const pad={l:48,r:12,t:16,b:32},X=x=>pad.l+(x-xmin)/(xmax-xmin||1)*(w-pad.l-pad.r),Y=y=>h-pad.b-(y-ymin)/(ymax-ymin)*(h-pad.t-pad.b);
+ ctx.font='11px system-ui';ctx.fillStyle='#b7c7d9';ctx.strokeStyle='#294361';ctx.lineWidth=1;
+ for(let i=0;i<=4;i++){let y=pad.t+i*(h-pad.t-pad.b)/4;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(w-pad.r,y);ctx.stroke();ctx.fillText(fmt(ymax-i*(ymax-ymin)/4),3,y+4)}
+ ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,h-pad.b);ctx.lineTo(w-pad.r,h-pad.b);ctx.stroke();
+ const palette=['#38bdf8','#fb923c','#4ade80'];
+ datasets.forEach((ds,j)=>{ctx.beginPath();ctx.strokeStyle=palette[j%palette.length];ctx.lineWidth=j===0?3:2;ctx.setLineDash(j===1&&$('functionSelect').value==='exp'?[6,4]:[]);
+  ds.data.forEach((pt,i)=>{if(!Number.isFinite(pt.y))return;const px=X(pt.x),py=Y(pt.y);if(i===0)ctx.moveTo(px,py);else ctx.lineTo(px,py)});ctx.stroke();ctx.setLineDash([]);
+ });
+ ctx.fillStyle='#e2e8f0';ctx.fillText('x',w-15,h-8);ctx.fillText('f(x)',5,12);
+ ctx.fillStyle='#b7c7d9';let legendX=pad.l;
+ datasets.forEach((ds,j)=>{ctx.fillStyle=palette[j%palette.length];ctx.fillRect(legendX,2,10,3);ctx.fillStyle='#e2e8f0';ctx.fillText(ds.label,legendX+14,9);legendX+=Math.min(150,ctx.measureText(ds.label).width+28)});
+}
 function renderChart(){
  const ctx=$('functionChart').getContext('2d');
- if(chart)chart.destroy();
+ if(chart){chart.destroy();chart=null}
+ if(typeof Chart==='undefined'){drawFallbackChart();return}
  chart=new Chart(ctx,{type:'line',data:{datasets:buildData()},options:{responsive:true,maintainAspectRatio:false,animation:{duration:250},interaction:{mode:'nearest',intersect:false},plugins:{legend:{labels:{color:'#e2e8f0',usePointStyle:true,boxWidth:9}},tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${fmt(c.parsed.y)}`}}},scales:{x:{type:'linear',title:{display:true,text:'x',color:'#b7c7d9'},ticks:{color:'#b7c7d9'},grid:{color:'#294361'}},y:{title:{display:true,text:'f(x)',color:'#b7c7d9'},ticks:{color:'#b7c7d9'},grid:{color:'#294361'}}}}});
 }
 function updateStats(){
@@ -183,7 +207,7 @@ function updateStats(){
  $('statusValue').textContent=status;
  $('statusValue').style.color=type==='exp'?(err<=1?'#4ade80':'#fca5a5'):'#4ade80';
  $('pointExplanation').textContent=`Posición x = ${fmt(x)}. ${type==='exp'?'La aproximación de Taylor se calcula alrededor de x = 0.':'Para esta función se muestra el valor de la curva en el punto seleccionado.'}`;
- if(chart){chart.data.datasets=buildData();chart.update('none')}
+ if(chart){chart.data.datasets=buildData();chart.update('none')}else{drawFallbackChart()}
  if(arStarted)drawARGraph();
 }
 function chooseFunction(){
@@ -191,6 +215,8 @@ function chooseFunction(){
  $('functionDescription').textContent=d.desc;$('learningText').textContent=d.learn;
  $('position').value=type==='exp'?15:15;
  renderChart();updateStats();
+window.addEventListener('resize',()=>{if(!chart)drawFallbackChart()});
+if(typeof Chart==='undefined'){console.warn('Chart.js no cargó; se utiliza el trazado local de respaldo.')}
 }
 function setMode(mode){
  const isAR=mode==='ar';
@@ -215,37 +241,35 @@ async function startAR(){
   if(!window.AFRAME || !window.AFRAME.components || !window.AFRAME.components.arjs){
    throw new Error('No se pudieron cargar las bibliotecas de realidad aumentada. Comprueba tu conexión a Internet y recarga la página.');
   }
-  hint.textContent='Comprobando permiso de cámara…';
-  // Prueba directa: fuerza al navegador a solicitar permiso y permite mostrar el error real.
-  let testStream;
-  try {
-   testStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
-   testStream.getTracks().forEach(track=>track.stop());
-  } catch(cameraError) {
-   const reason = cameraError.name === 'NotAllowedError' ? 'Chrome bloqueó el permiso. Abre los permisos del sitio y permite Cámara.' :
-                  cameraError.name === 'NotFoundError' ? 'No se encontró una cámara disponible en este dispositivo.' :
-                  cameraError.name === 'NotReadableError' ? 'La cámara está ocupada por otra aplicación. Cierra otras apps que la estén usando.' :
-                  cameraError.name === 'OverconstrainedError' ? 'La cámara no admite la configuración solicitada.' :
-                  'El navegador no pudo abrir la cámara: ' + cameraError.name;
-   throw new Error(reason);
-  }
-  hint.textContent='Permiso concedido. Iniciando realidad aumentada…';
+  // No abrimos getUserMedia manualmente aquí. AR.js debe solicitar y gestionar
+  // el flujo de cámara una sola vez para evitar conflictos con el dispositivo.
+  hint.textContent='Iniciando AR.js y solicitando permiso de cámara…';
   $('arMount').innerHTML=`<a-scene embedded vr-mode-ui="enabled:false" renderer="logarithmicDepthBuffer:true;precision:medium" arjs="sourceType:webcam;detectionMode:mono;debugUIEnabled:false">
    <a-marker preset="hiro" id="hiroMarker" smooth="true" smooth-count="5">
     <a-entity id="arGraph" scale=".42 .42 .42"></a-entity>
    </a-marker><a-entity camera></a-entity></a-scene>`;
   const scene=$('arMount').querySelector('a-scene');
   let loaded=false;
-  scene.addEventListener('loaded',()=>{loaded=true;sceneReady=true;drawARGraph();hint.textContent='Cámara iniciada. Apunta al marcador Hiro.'});
-  scene.addEventListener('camera-error',()=>{hint.textContent='AR.js no pudo iniciar la cámara. Cierra otras apps que usen la cámara y vuelve a intentarlo.'});
-  scene.addEventListener('camera-init',()=>{hint.textContent='Cámara iniciada. Apunta al marcador Hiro.'});
+  scene.addEventListener('loaded',()=>{loaded=true;sceneReady=true;drawARGraph();hint.textContent='Escena AR preparada. Esperando la cámara…'});
+  scene.addEventListener('camera-error',(event)=>{
+   console.error('AR.js camera-error:',event.detail || event);
+   hint.textContent='AR.js no pudo abrir la cámara. Revisa el permiso de Chrome y cierra otras aplicaciones que puedan estar usando la cámara.';
+   $('startCamera').disabled=false;
+  });
+  scene.addEventListener('camera-init',()=>{
+   hint.textContent='Cámara iniciada correctamente. Apunta al marcador Hiro.';
+  });
+  scene.addEventListener('arjs-video-loaded',()=>{
+   hint.textContent='Video de cámara recibido. Buscando el marcador Hiro…';
+  });
   const marker=$('arMount').querySelector('#hiroMarker');
   marker.addEventListener('markerFound',()=>hint.textContent='¡Hiro detectado! La gráfica está sobre el marcador.');
   marker.addEventListener('markerLost',()=>hint.textContent='No se detecta Hiro. Vuelve a enfocar el marcador.');
   arStarted=true;
   setTimeout(()=>{
-   if(arStarted && !loaded){
-    hint.textContent='El permiso está concedido, pero AR.js no terminó de iniciar. Revisa la conexión y recarga la página.';
+   if(arStarted && !hint.textContent.includes('Cámara iniciada') && !hint.textContent.includes('Hiro detectado') && !hint.textContent.includes('Video de cámara')){
+    hint.textContent='AR.js no confirmó el inicio de la cámara. Comprueba el permiso de Cámara para este sitio, cierra otras apps que la usen y vuelve a pulsar Detener cámara e Iniciar cámara.';
+    $('startCamera').disabled=false;
    }
   },10000);
  }catch(e){
@@ -273,20 +297,4 @@ function drawARGraph(){
  while(root.firstChild)root.removeChild(root.firstChild);
  root.object3D.children.slice().forEach(obj=>{if(obj.userData&&obj.userData.taylorAR){root.object3D.remove(obj);if(obj.geometry)obj.geometry.dispose();if(obj.material)obj.material.dispose()}});
  const type=$('functionSelect').value,k=+$('rate').value,range=definitions[type].range;
- const values=[];for(let i=0;i<=40;i++){let x=range[0]+(range[1]-range[0])*i/40;let y=evaluate(type,x,k);if(y!==null&&Number.isFinite(y))values.push({x,y})}
- let ymin=Math.min(...values.map(p=>p.y)),ymax=Math.max(...values.map(p=>p.y));if(ymax===ymin)ymax=ymin+1;
- const scaleY=v=>.12+(v-ymin)/(ymax-ymin)*.72;
- function line(points,color){const el=document.createElement('a-entity');el.setAttribute('line',{start:points[0],end:points[points.length-1],color});root.appendChild(el);
-  const geom=new AFRAME.THREE.BufferGeometry().setFromPoints(points.map(p=>new AFRAME.THREE.Vector3(...p)));
-  const mesh=new AFRAME.THREE.Line(geom,new AFRAME.THREE.LineBasicMaterial({color}));mesh.userData.taylorAR=true;root.object3D.add(mesh);}
- const coords=values.map((p,i)=>[-1.05+i/40*2.1,scaleY(p.y),.18-(i/40)*.72]);
- line([[-1.12,.04,.2],[1.12,.04,.2]],'#e2e8f0');line([[-1.12,.04,.2],[-1.12,.04,-.58]],'#e2e8f0');line(coords,'#38bdf8');
- if(type==='exp'){const t=values.map((p,i)=>[-1.05+i/40*2.1,scaleY(taylorExp(p.x,k)),.18-(i/40)*.72]);line(t,'#fb923c')}
- const title=document.createElement('a-text');title.setAttribute('value',definitions[type].name.toUpperCase());title.setAttribute('position','-.65 .06 -.68');title.setAttribute('rotation','-90 0 0');title.setAttribute('width','2.2');title.setAttribute('color','#ffffff');root.appendChild(title);
- const marker=document.createElement('a-sphere');const pos=+$('position').value,x=xAtPosition(pos),v=evaluate(type,x,k),idx=Math.max(0,Math.min(40,Math.round((x-range[0])/(range[1]-range[0])*40)));
- marker.setAttribute('radius','.045');marker.setAttribute('color','#4ade80');marker.setAttribute('position',coords[idx].join(' '));root.appendChild(marker);
-}
-$('directBtn').addEventListener('click',()=>setMode('direct'));
-$('arBtn').addEventListener('click',()=>setMode('ar'));
-$('startCamera').addEventListener('click',startAR);$('stopCamera').addEventListener('click',stopAR);
-$('functionSelect').addEventListener('change',
+ const values=[];for(let i=0;i<=40;i++){let x=range[0]+(range[1]-range[0])*i/40;le
