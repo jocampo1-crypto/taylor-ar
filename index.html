@@ -8,7 +8,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <!-- Se precargan las bibliotecas de realidad aumentada antes de que el usuario pulse el botón -->
 <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js@3.4.7/aframe/build/aframe-ar.js"></script>
+<script src="https://raw.githack.com/AR-js-org/AR.js/3.4.7/aframe/build/aframe-ar.js"></script>
 <style>
 :root{--bg:#071426;--panel:#10233d;--panel2:#172e4c;--line:#294361;--cyan:#38bdf8;--orange:#fb923c;--green:#4ade80;--text:#f8fafc;--muted:#b7c7d9}
 *{box-sizing:border-box}
@@ -215,7 +215,21 @@ async function startAR(){
   if(!window.AFRAME || !window.AFRAME.components || !window.AFRAME.components.arjs){
    throw new Error('No se pudieron cargar las bibliotecas de realidad aumentada. Comprueba tu conexión a Internet y recarga la página.');
   }
-  hint.textContent='Iniciando cámara. Si el navegador pregunta, pulsa Permitir…';
+  hint.textContent='Comprobando permiso de cámara…';
+  // Prueba directa: fuerza al navegador a solicitar permiso y permite mostrar el error real.
+  let testStream;
+  try {
+   testStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
+   testStream.getTracks().forEach(track=>track.stop());
+  } catch(cameraError) {
+   const reason = cameraError.name === 'NotAllowedError' ? 'Chrome bloqueó el permiso. Abre los permisos del sitio y permite Cámara.' :
+                  cameraError.name === 'NotFoundError' ? 'No se encontró una cámara disponible en este dispositivo.' :
+                  cameraError.name === 'NotReadableError' ? 'La cámara está ocupada por otra aplicación. Cierra otras apps que la estén usando.' :
+                  cameraError.name === 'OverconstrainedError' ? 'La cámara no admite la configuración solicitada.' :
+                  'El navegador no pudo abrir la cámara: ' + cameraError.name;
+   throw new Error(reason);
+  }
+  hint.textContent='Permiso concedido. Iniciando realidad aumentada…';
   $('arMount').innerHTML=`<a-scene embedded vr-mode-ui="enabled:false" renderer="logarithmicDepthBuffer:true;precision:medium" arjs="sourceType:webcam;detectionMode:mono;debugUIEnabled:false">
    <a-marker preset="hiro" id="hiroMarker" smooth="true" smooth-count="5">
     <a-entity id="arGraph" scale=".42 .42 .42"></a-entity>
@@ -223,16 +237,17 @@ async function startAR(){
   const scene=$('arMount').querySelector('a-scene');
   let loaded=false;
   scene.addEventListener('loaded',()=>{loaded=true;sceneReady=true;drawARGraph();hint.textContent='Cámara iniciada. Apunta al marcador Hiro.'});
+  scene.addEventListener('camera-error',()=>{hint.textContent='AR.js no pudo iniciar la cámara. Cierra otras apps que usen la cámara y vuelve a intentarlo.'});
+  scene.addEventListener('camera-init',()=>{hint.textContent='Cámara iniciada. Apunta al marcador Hiro.'});
   const marker=$('arMount').querySelector('#hiroMarker');
   marker.addEventListener('markerFound',()=>hint.textContent='¡Hiro detectado! La gráfica está sobre el marcador.');
   marker.addEventListener('markerLost',()=>hint.textContent='No se detecta Hiro. Vuelve a enfocar el marcador.');
   arStarted=true;
-  // Si el navegador rechaza el acceso, informar claramente al usuario.
   setTimeout(()=>{
-   if(arStarted && !loaded && hint.textContent.includes('Iniciando cámara')){
-    hint.textContent='La cámara está tardando en iniciar. Comprueba que Chrome tenga permiso para usar la cámara y vuelve a intentarlo.';
+   if(arStarted && !loaded){
+    hint.textContent='El permiso está concedido, pero AR.js no terminó de iniciar. Revisa la conexión y recarga la página.';
    }
-  },9000);
+  },10000);
  }catch(e){
   console.error('Taylor AR:',e);
   hint.textContent=e.message || 'No se pudo iniciar la cámara. Revisa los permisos del navegador.';
@@ -274,13 +289,4 @@ function drawARGraph(){
 $('directBtn').addEventListener('click',()=>setMode('direct'));
 $('arBtn').addEventListener('click',()=>setMode('ar'));
 $('startCamera').addEventListener('click',startAR);$('stopCamera').addEventListener('click',stopAR);
-$('functionSelect').addEventListener('change',chooseFunction);
-$('rate').addEventListener('input',()=>{$('rateValue').textContent=$('rate').value+' %';updateStats()});
-$('position').addEventListener('input',updateStats);
-$('resetBtn').addEventListener('click',()=>{$('position').value=15;$('rate').value=3;$('rateValue').textContent='3 %';updateStats()});
-$('playBtn').addEventListener('click',()=>{if(animation){clearInterval(animation);animation=null;$('playBtn').textContent='▶ Animar recorrido';return}
- $('playBtn').textContent='Ⅱ Pausar';let p=+$('position').value;animation=setInterval(()=>{p++;if(p>30)p=0;$('position').value=p;updateStats()},180)});
-renderChart();updateStats();
-</script>
-</body>
-</html>
+$('functionSelect').addEventListener('change',
